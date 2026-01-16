@@ -20,6 +20,7 @@ export default function Trades() {
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [strategyFilter, setStrategyFilter] = useState('');
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     symbol: '',
@@ -27,6 +28,9 @@ export default function Trades() {
     quantity: '',
     entryPrice: '',
     exitPrice: '',
+    stopLoss: '',
+    strategy: '',
+    riskAmount: '',
     notes: '',
   });
 
@@ -65,6 +69,11 @@ export default function Trades() {
       );
     }
 
+    // Strategy filter
+    if (strategyFilter) {
+      filtered = filtered.filter(trade => trade.strategy === strategyFilter);
+    }
+
     // Date range filter
     if (startDate) {
       filtered = filtered.filter(trade => trade.date >= startDate);
@@ -74,7 +83,7 @@ export default function Trades() {
     }
 
     setFilteredTrades(filtered);
-  }, [trades, searchTerm, startDate, endDate]);
+  }, [trades, searchTerm, startDate, endDate, strategyFilter]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -82,6 +91,8 @@ export default function Trades() {
     const quantity = parseFloat(formData.quantity);
     const entryPrice = parseFloat(formData.entryPrice);
     const exitPrice = parseFloat(formData.exitPrice);
+    const stopLoss = formData.stopLoss ? parseFloat(formData.stopLoss) : null;
+    const riskAmount = formData.riskAmount ? parseFloat(formData.riskAmount) : null;
     
     let profitLoss;
     if (formData.type === 'long') {
@@ -90,12 +101,26 @@ export default function Trades() {
       profitLoss = (entryPrice - exitPrice) * quantity;
     }
 
+    // Calculate risk/reward ratio if stop loss is provided
+    let riskRewardRatio = null;
+    if (stopLoss) {
+      const risk = Math.abs(entryPrice - stopLoss) * quantity;
+      const reward = Math.abs(profitLoss);
+      if (risk > 0) {
+        riskRewardRatio = reward / risk;
+      }
+    }
+
     const tradeData = {
       ...formData,
       quantity,
       entryPrice,
       exitPrice,
       profitLoss,
+      stopLoss,
+      riskAmount,
+      riskRewardRatio,
+      strategy: formData.strategy || 'Untagged',
     };
 
     try {
@@ -120,6 +145,9 @@ export default function Trades() {
         quantity: '',
         entryPrice: '',
         exitPrice: '',
+        stopLoss: '',
+        strategy: '',
+        riskAmount: '',
         notes: '',
       });
     } catch (error) {
@@ -140,6 +168,9 @@ export default function Trades() {
       entryPrice: trade.entryPrice.toString(),
       exitPrice: trade.exitPrice.toString(),
       notes: trade.notes || '',
+      stopLoss: trade.stopLoss?.toString() || '',
+      strategy: trade.strategy || '',
+      riskAmount: trade.riskAmount?.toString() || '',
     });
     setShowModal(true);
   };
@@ -164,15 +195,19 @@ export default function Trades() {
       return;
     }
 
-    const headers = ['Date', 'Symbol', 'Type', 'Quantity', 'Entry Price', 'Exit Price', 'P/L', 'Notes'];
+    const headers = ['Date', 'Symbol', 'Strategy', 'Type', 'Quantity', 'Entry Price', 'Exit Price', 'Stop Loss', 'Risk Amount', 'P/L', 'R:R', 'Notes'];
     const csvData = filteredTrades.map(trade => [
       trade.date,
       trade.symbol,
+      trade.strategy || 'Untagged',
       trade.type,
       trade.quantity,
       formatCurrency(trade.entryPrice),
       formatCurrency(trade.exitPrice),
+      trade.stopLoss ? formatCurrency(trade.stopLoss) : '',
+      trade.riskAmount ? formatCurrency(trade.riskAmount) : '',
       formatCurrency(trade.profitLoss),
+      trade.riskRewardRatio ? trade.riskRewardRatio.toFixed(2) : '',
       trade.notes || ''
     ]);
 
@@ -196,6 +231,7 @@ export default function Trades() {
     setSearchTerm('');
     setStartDate('');
     setEndDate('');
+    setStrategyFilter('');
   };
 
   const handleChange = (e) => {
@@ -243,6 +279,27 @@ export default function Trades() {
               />
             </div>
             <div className={styles.filterGroup}>
+              <label>Strategy:</label>
+              <select
+                value={strategyFilter}
+                onChange={(e) => setStrategyFilter(e.target.value)}
+                className={styles.strategySelect}
+              >
+                <option value="">All Strategies</option>
+                <option value="Breakout">Breakout</option>
+                <option value="Momentum">Momentum</option>
+                <option value="Pullback">Pullback</option>
+                <option value="Reversal">Reversal</option>
+                <option value="Scalp">Scalp</option>
+                <option value="Swing">Swing</option>
+                <option value="Position">Position</option>
+                <option value="Pattern">Pattern</option>
+                <option value="News">News</option>
+                <option value="Other">Other</option>
+                <option value="Untagged">Untagged</option>
+              </select>
+            </div>
+            <div className={styles.filterGroup}>
               <label>From:</label>
               <input
                 type="date"
@@ -260,7 +317,7 @@ export default function Trades() {
                 className={styles.dateInput}
               />
             </div>
-            {(searchTerm || startDate || endDate) && (
+            {(searchTerm || startDate || endDate || strategyFilter) && (
               <button className={styles.clearButton} onClick={clearFilters}>
                 Clear Filters
               </button>
@@ -292,18 +349,20 @@ export default function Trades() {
             <div className={styles.tableHeader}>
               <span onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>Date{getSortIcon('date')}</span>
               <span onClick={() => handleSort('symbol')} style={{ cursor: 'pointer' }}>Symbol{getSortIcon('symbol')}</span>
+              <span onClick={() => handleSort('strategy')} style={{ cursor: 'pointer' }}>Strategy{getSortIcon('strategy')}</span>
               <span onClick={() => handleSort('type')} style={{ cursor: 'pointer' }}>Type{getSortIcon('type')}</span>
               <span onClick={() => handleSort('quantity')} style={{ cursor: 'pointer' }}>Quantity{getSortIcon('quantity')}</span>
-              <span onClick={() => handleSort('entryPrice')} style={{ cursor: 'pointer' }}>Entry Price{getSortIcon('entryPrice')}</span>
-              <span onClick={() => handleSort('exitPrice')} style={{ cursor: 'pointer' }}>Exit Price{getSortIcon('exitPrice')}</span>
+              <span onClick={() => handleSort('entryPrice')} style={{ cursor: 'pointer' }}>Entry{getSortIcon('entryPrice')}</span>
+              <span onClick={() => handleSort('exitPrice')} style={{ cursor: 'pointer' }}>Exit{getSortIcon('exitPrice')}</span>
               <span onClick={() => handleSort('profitLoss')} style={{ cursor: 'pointer' }}>P&L{getSortIcon('profitLoss')}</span>
-              <span>Notes</span>
+              <span onClick={() => handleSort('riskRewardRatio')} style={{ cursor: 'pointer' }}>R:R{getSortIcon('riskRewardRatio')}</span>
               <span>Actions</span>
             </div>
             {filteredTrades.map((trade) => (
               <div key={trade.id} className={styles.tableRow}>
                 <span>{trade.date}</span>
                 <span className={styles.symbol}>{trade.symbol}</span>
+                <span className={styles.strategyBadge}>{trade.strategy || 'Untagged'}</span>
                 <span className={trade.type === 'long' ? styles.longBadge : styles.shortBadge}>
                   {trade.type.toUpperCase()}
                 </span>
@@ -313,7 +372,7 @@ export default function Trades() {
                 <span className={trade.profitLoss >= 0 ? styles.profit : styles.loss}>
                   ${formatCurrency(trade.profitLoss)}
                 </span>
-                <span className={styles.notes}>{trade.notes || '-'}</span>
+                <span>{trade.riskRewardRatio ? `${trade.riskRewardRatio.toFixed(2)}:1` : '-'}</span>
                 <span className={styles.actions}>
                   <button
                     className={styles.editButton}
@@ -407,6 +466,50 @@ export default function Trades() {
                       placeholder="0.00"
                       step="0.01"
                       required
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.formRow}>
+                  <div className={styles.formGroup}>
+                    <label>Strategy</label>
+                    <select name="strategy" value={formData.strategy} onChange={handleChange}>
+                      <option value="">Select Strategy</option>
+                      <option value="Breakout">Breakout</option>
+                      <option value="Momentum">Momentum</option>
+                      <option value="Pullback">Pullback</option>
+                      <option value="Reversal">Reversal</option>
+                      <option value="Scalp">Scalp</option>
+                      <option value="Swing">Swing</option>
+                      <option value="Position">Position</option>
+                      <option value="Pattern">Pattern</option>
+                      <option value="News">News</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className={styles.formGroup}>
+                    <label>Stop Loss (Optional)</label>
+                    <input
+                      type="number"
+                      name="stopLoss"
+                      value={formData.stopLoss}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      step="0.01"
+                    />
+                  </div>
+                </div>
+
+                <div className={styles.formRow}>
+                  <div className={styles.formGroup}>
+                    <label>Risk Amount (Optional)</label>
+                    <input
+                      type="number"
+                      name="riskAmount"
+                      value={formData.riskAmount}
+                      onChange={handleChange}
+                      placeholder="0.00"
+                      step="0.01"
                     />
                   </div>
                 </div>

@@ -57,10 +57,14 @@ export default function Analytics() {
   });
 
   const [monthlyData, setMonthlyData] = useState([]);
+  const [symbolData, setSymbolData] = useState([]);
   const [monthlyChartData, setMonthlyChartData] = useState(null);
   const [winLossChartData, setWinLossChartData] = useState(null);
+  const [symbolChartData, setSymbolChartData] = useState(null);
+  const [strategyData, setStrategyData] = useState([]);
+  const [strategyChartData, setStrategyChartData] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'month', direction: 'desc' });
-  const [sections, setSections] = useState(['performance', 'plBreakdown', 'winLossChart', 'tradeDistribution', 'monthlyPerformance']);
+  const [sections, setSections] = useState(['performance', 'plBreakdown', 'symbolPerformance', 'strategyPerformance', 'winLossChart', 'tradeDistribution', 'monthlyPerformance']);
 
   useEffect(() => {
     if (user) {
@@ -138,6 +142,95 @@ export default function Analytics() {
       .sort((a, b) => b.month.localeCompare(a.month));
 
     setMonthlyData(monthly);
+
+    // Symbol performance breakdown
+    const symbolMap = {};
+    trades.forEach(trade => {
+      if (!symbolMap[trade.symbol]) {
+        symbolMap[trade.symbol] = { wins: 0, losses: 0, profit: 0, loss: 0, trades: 0 };
+      }
+      symbolMap[trade.symbol].trades++;
+      if (trade.profitLoss > 0) {
+        symbolMap[trade.symbol].wins++;
+        symbolMap[trade.symbol].profit += trade.profitLoss;
+      } else {
+        symbolMap[trade.symbol].losses++;
+        symbolMap[trade.symbol].loss += Math.abs(trade.profitLoss);
+      }
+    });
+
+    const symbolPerf = Object.entries(symbolMap)
+      .map(([symbol, data]) => ({
+        symbol,
+        ...data,
+        netPL: data.profit - data.loss,
+        winRate: ((data.wins / data.trades) * 100).toFixed(1),
+      }))
+      .sort((a, b) => b.netPL - a.netPL);
+
+    setSymbolData(symbolPerf);
+
+    // Symbol bar chart data
+    const topSymbols = symbolPerf.slice(0, 10); // Top 10 symbols
+    setSymbolChartData({
+      labels: topSymbols.map(s => s.symbol),
+      datasets: [
+        {
+          label: 'Net P&L by Symbol',
+          data: topSymbols.map(s => s.netPL),
+          backgroundColor: topSymbols.map(s => s.netPL >= 0 ? 'rgba(16, 185, 129, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
+          borderColor: topSymbols.map(s => s.netPL >= 0 ? 'rgb(16, 185, 129)' : 'rgb(239, 68, 68)'),
+          borderWidth: 1,
+        },
+      ],
+    });
+
+    // Strategy performance breakdown
+    const strategyMap = {};
+    trades.forEach(trade => {
+      const strategy = trade.strategy || 'Untagged';
+      if (!strategyMap[strategy]) {
+        strategyMap[strategy] = { wins: 0, losses: 0, profit: 0, loss: 0, trades: 0, totalRR: 0, rrCount: 0 };
+      }
+      strategyMap[strategy].trades++;
+      if (trade.profitLoss > 0) {
+        strategyMap[strategy].wins++;
+        strategyMap[strategy].profit += trade.profitLoss;
+      } else {
+        strategyMap[strategy].losses++;
+        strategyMap[strategy].loss += Math.abs(trade.profitLoss);
+      }
+      if (trade.riskRewardRatio) {
+        strategyMap[strategy].totalRR += trade.riskRewardRatio;
+        strategyMap[strategy].rrCount++;
+      }
+    });
+
+    const strategyPerf = Object.entries(strategyMap)
+      .map(([strategy, data]) => ({
+        strategy,
+        ...data,
+        netPL: data.profit - data.loss,
+        winRate: ((data.wins / data.trades) * 100).toFixed(1),
+        avgRR: data.rrCount > 0 ? (data.totalRR / data.rrCount).toFixed(2) : '-',
+      }))
+      .sort((a, b) => b.netPL - a.netPL);
+
+    setStrategyData(strategyPerf);
+
+    // Strategy bar chart data
+    setStrategyChartData({
+      labels: strategyPerf.map(s => s.strategy),
+      datasets: [
+        {
+          label: 'Net P&L by Strategy',
+          data: strategyPerf.map(s => s.netPL),
+          backgroundColor: strategyPerf.map(s => s.netPL >= 0 ? 'rgba(99, 102, 241, 0.8)' : 'rgba(239, 68, 68, 0.8)'),
+          borderColor: strategyPerf.map(s => s.netPL >= 0 ? 'rgb(99, 102, 241)' : 'rgb(239, 68, 68)'),
+          borderWidth: 1,
+        },
+      ],
+    });
 
     // Monthly bar chart data
     setMonthlyChartData({
@@ -302,6 +395,152 @@ export default function Analytics() {
             </div>
           </div>
         );
+
+      case 'symbolPerformance':
+        return symbolChartData ? (
+          <div className={styles.section}>
+            <h2>Symbol Performance</h2>
+            <div className={styles.chartContainer}>
+              <Bar
+                data={symbolChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  indexAxis: 'y',
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      callbacks: {
+                        label: function(context) {
+                          return 'P&L: $' + formatCurrency(context.parsed.x);
+                        }
+                      }
+                    }
+                  },
+                  scales: {
+                    x: {
+                      ticks: {
+                        callback: function(value) {
+                          return '$' + value.toFixed(0);
+                        },
+                        color: '#9ca3af'
+                      },
+                      grid: {
+                        color: 'rgba(255, 255, 255, 0.05)'
+                      }
+                    },
+                    y: {
+                      ticks: {
+                        color: '#9ca3af'
+                      },
+                      grid: {
+                        display: false
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div className={styles.tableContainer}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Trades</th>
+                    <th>Win Rate</th>
+                    <th>Net P&L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {symbolData.map((item, index) => (
+                    <tr key={index}>
+                      <td className={styles.symbol}>{item.symbol}</td>
+                      <td>{item.trades}</td>
+                      <td>{item.winRate}%</td>
+                      <td className={item.netPL >= 0 ? styles.success : styles.danger}>
+                        ${formatCurrency(item.netPL)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null;
+
+      case 'strategyPerformance':
+        return strategyChartData ? (
+          <div className={styles.section}>
+            <h2>Strategy Performance</h2>
+            <div className={styles.chartContainer}>
+              <Bar
+                data={strategyChartData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  indexAxis: 'y',
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      callbacks: {
+                        label: function(context) {
+                          return 'P&L: $' + formatCurrency(context.parsed.x);
+                        }
+                      }
+                    }
+                  },
+                  scales: {
+                    x: {
+                      ticks: {
+                        callback: function(value) {
+                          return '$' + value.toFixed(0);
+                        },
+                        color: '#9ca3af'
+                      },
+                      grid: {
+                        color: 'rgba(255, 255, 255, 0.05)'
+                      }
+                    },
+                    y: {
+                      ticks: {
+                        color: '#9ca3af'
+                      },
+                      grid: {
+                        display: false
+                      }
+                    }
+                  }
+                }}
+              />
+            </div>
+            <div className={styles.tableContainer}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Strategy</th>
+                    <th>Trades</th>
+                    <th>Win Rate</th>
+                    <th>Avg R:R</th>
+                    <th>Net P&L</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {strategyData.map((item, index) => (
+                    <tr key={index}>
+                      <td className={styles.strategyBadge}>{item.strategy}</td>
+                      <td>{item.trades}</td>
+                      <td>{item.winRate}%</td>
+                      <td>{item.avgRR}</td>
+                      <td className={item.netPL >= 0 ? styles.success : styles.danger}>
+                        ${formatCurrency(item.netPL)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null;
 
       case 'winLossChart':
         return winLossChartData ? (
