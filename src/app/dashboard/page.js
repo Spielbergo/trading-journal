@@ -70,28 +70,32 @@ export default function Dashboard() {
   const loadTrades = async () => {
     try {
       setLoading(true);
-      const trades = await tradesService.getTrades();
-      setAllTrades(trades);
-      setRecentTrades(trades.slice(0, 5));
+      const allTradesData = await tradesService.getTrades();
+      setAllTrades(allTradesData);
+      setRecentTrades(allTradesData.slice(0, 10)); // Show more to include open positions
 
-      // Calculate stats
-      if (trades.length > 0) {
-        const wins = trades.filter(t => t.profitLoss > 0);
-        const losses = trades.filter(t => t.profitLoss < 0);
-        const totalPL = trades.reduce((sum, t) => sum + t.profitLoss, 0);
+      // Calculate stats (only for closed trades)
+      const closedTrades = allTradesData.filter(t => t.exitPrice && t.exitPrice > 0);
+      const openPositions = allTradesData.filter(t => !t.exitPrice || t.exitPrice === 0);
+      
+      if (closedTrades.length > 0) {
+        const wins = closedTrades.filter(t => t.profitLoss > 0);
+        const losses = closedTrades.filter(t => t.profitLoss < 0);
+        const totalPL = closedTrades.reduce((sum, t) => sum + t.profitLoss, 0);
         
         setStats({
-          totalTrades: trades.length,
-          winRate: trades.length > 0 ? (wins.length / trades.length * 100).toFixed(1) : 0,
+          totalTrades: closedTrades.length,
+          openPositions: openPositions.length,
+          winRate: closedTrades.length > 0 ? (wins.length / closedTrades.length * 100).toFixed(1) : 0,
           profitLoss: totalPL,
           avgWin: wins.length > 0 ? (wins.reduce((sum, t) => sum + t.profitLoss, 0) / wins.length).toFixed(2) : 0,
           avgLoss: losses.length > 0 ? (losses.reduce((sum, t) => sum + t.profitLoss, 0) / losses.length).toFixed(2) : 0,
-          bestTrade: trades.length > 0 ? Math.max(...trades.map(t => t.profitLoss)) : 0,
-          worstTrade: trades.length > 0 ? Math.min(...trades.map(t => t.profitLoss)) : 0,
+          bestTrade: closedTrades.length > 0 ? Math.max(...closedTrades.map(t => t.profitLoss)) : 0,
+          worstTrade: closedTrades.length > 0 ? Math.min(...closedTrades.map(t => t.profitLoss)) : 0,
         });
 
-        // Calculate equity curve (sort by date first)
-        const sortedTrades = [...trades].sort((a, b) => new Date(a.date) - new Date(b.date));
+        // Calculate equity curve (sort by date first, only closed trades)
+        const sortedTrades = [...closedTrades].sort((a, b) => new Date(a.date) - new Date(b.date));
         let cumulativePL = 0;
         const equityData = sortedTrades.map(trade => {
           cumulativePL += trade.profitLoss;
@@ -211,8 +215,12 @@ export default function Dashboard() {
         return (
           <div className={styles.statsGrid}>
             <div className={styles.statCard}>
-              <h3>Total Trades</h3>
+              <h3>Closed Trades</h3>
               <p className={styles.statValue}>{stats.totalTrades}</p>
+            </div>
+            <div className={styles.statCard}>
+              <h3>Open Positions</h3>
+              <p className={`${styles.statValue} ${styles.openBadge}`}>{stats.openPositions || 0}</p>
             </div>
             <div className={styles.statCard}>
               <h3>Win Rate</h3>
@@ -254,27 +262,38 @@ export default function Dashboard() {
                 <div className={styles.tableHeader}>
                   <span onClick={() => handleSort('date')} style={{ cursor: 'pointer' }}>Date{getSortIcon('date')}</span>
                   <span onClick={() => handleSort('symbol')} style={{ cursor: 'pointer' }}>Symbol{getSortIcon('symbol')}</span>
+                  <span>Status</span>
                   <span onClick={() => handleSort('type')} style={{ cursor: 'pointer' }}>Type{getSortIcon('type')}</span>
                   <span onClick={() => handleSort('quantity')} style={{ cursor: 'pointer' }}>Qty{getSortIcon('quantity')}</span>
                   <span onClick={() => handleSort('entryPrice')} style={{ cursor: 'pointer' }}>Entry{getSortIcon('entryPrice')}</span>
                   <span onClick={() => handleSort('exitPrice')} style={{ cursor: 'pointer' }}>Exit{getSortIcon('exitPrice')}</span>
                   <span onClick={() => handleSort('profitLoss')} style={{ cursor: 'pointer' }}>P&L{getSortIcon('profitLoss')}</span>
                 </div>
-                {recentTrades.map((trade) => (
-                  <div key={trade.id} className={styles.tableRow}>
-                    <span>{trade.date}</span>
-                    <span>{trade.symbol}</span>
-                    <span className={trade.type === 'long' ? styles.longBadge : styles.shortBadge}>
-                      {trade.type.toUpperCase()}
-                    </span>
-                    <span>{trade.quantity}</span>
-                    <span>${formatCurrency(trade.entryPrice)}</span>
-                    <span>${formatCurrency(trade.exitPrice)}</span>
-                    <span className={trade.profitLoss >= 0 ? styles.profit : styles.loss}>
-                      ${formatCurrency(trade.profitLoss)}
-                    </span>
-                  </div>
-                ))}
+                {recentTrades.map((trade) => {
+                  const isOpen = !trade.exitPrice || trade.exitPrice === 0;
+                  return (
+                    <div key={trade.id} className={styles.tableRow}>
+                      <span>{trade.date}</span>
+                      <span>{trade.symbol}</span>
+                      <span>
+                        {isOpen ? (
+                          <span className={styles.openPositionBadge}>OPEN</span>
+                        ) : (
+                          <span className={styles.closedBadge}>CLOSED</span>
+                        )}
+                      </span>
+                      <span className={trade.type === 'long' ? styles.longBadge : styles.shortBadge}>
+                        {trade.type.toUpperCase()}
+                      </span>
+                      <span>{trade.quantity}</span>
+                      <span>${formatCurrency(trade.entryPrice)}</span>
+                      <span>{isOpen ? '-' : `$${formatCurrency(trade.exitPrice)}`}</span>
+                      <span className={isOpen ? '' : (trade.profitLoss >= 0 ? styles.profit : styles.loss)}>
+                        {isOpen ? '-' : `$${formatCurrency(trade.profitLoss)}`}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

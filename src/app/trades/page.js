@@ -59,7 +59,8 @@ export default function Trades() {
 
   // Filter trades based on search and date range
   useEffect(() => {
-    let filtered = [...trades];
+    // Filter out open positions (only show closed trades)
+    let filtered = trades.filter(trade => trade.exitPrice && trade.exitPrice > 0);
 
     // Search filter
     if (searchTerm) {
@@ -90,20 +91,23 @@ export default function Trades() {
     
     const quantity = parseFloat(formData.quantity);
     const entryPrice = parseFloat(formData.entryPrice);
-    const exitPrice = parseFloat(formData.exitPrice);
+    const exitPrice = formData.exitPrice ? parseFloat(formData.exitPrice) : 0;
     const stopLoss = formData.stopLoss ? parseFloat(formData.stopLoss) : null;
     const riskAmount = formData.riskAmount ? parseFloat(formData.riskAmount) : null;
     
-    let profitLoss;
-    if (formData.type === 'long') {
-      profitLoss = (exitPrice - entryPrice) * quantity;
-    } else {
-      profitLoss = (entryPrice - exitPrice) * quantity;
+    // Only calculate P&L if exit price is provided
+    let profitLoss = 0;
+    if (exitPrice > 0) {
+      if (formData.type === 'long') {
+        profitLoss = (exitPrice - entryPrice) * quantity;
+      } else {
+        profitLoss = (entryPrice - exitPrice) * quantity;
+      }
     }
 
-    // Calculate risk/reward ratio if stop loss is provided
+    // Calculate risk/reward ratio if stop loss and exit price are provided
     let riskRewardRatio = null;
-    if (stopLoss) {
+    if (stopLoss && exitPrice > 0) {
       const risk = Math.abs(entryPrice - stopLoss) * quantity;
       const reward = Math.abs(profitLoss);
       if (risk > 0) {
@@ -457,15 +461,14 @@ export default function Trades() {
                     />
                   </div>
                   <div className={styles.formGroup}>
-                    <label>Exit Price</label>
+                    <label>Exit Price (Optional for open positions)</label>
                     <input
                       type="number"
                       name="exitPrice"
                       value={formData.exitPrice}
                       onChange={handleChange}
-                      placeholder="0.00"
+                      placeholder="Leave blank for open position"
                       step="0.01"
-                      required
                     />
                   </div>
                 </div>

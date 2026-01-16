@@ -21,6 +21,7 @@ export default function Sidebar() {
 
   const navItems = [
     { href: '/dashboard', label: 'Dashboard', icon: '📊' },
+    { href: '/positions', label: 'Open Positions', icon: '💼' },
     { href: '/trades', label: 'Trades', icon: '📝' },
     { href: '/analytics', label: 'Analytics', icon: '📈' },
     { href: '/settings', label: 'Settings', icon: '⚙️' },
